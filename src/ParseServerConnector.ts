@@ -1,9 +1,9 @@
 import { Application } from "express";
-import { IConnector } from "./Connector";
 import * as Parse from "parse/node";
 import { ParseServer } from "parse-server";
 import * as ParseDashboard from "parse-dashboard";
 import { IParseConnectionOptions } from "./ParseConnectionOptions";
+import { IConnector } from "@ignatisd/cbrm/lib/interfaces/helpers/Connector";
 
 export class ParseServerConnector implements IConnector {
 

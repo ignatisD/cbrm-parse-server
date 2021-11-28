@@ -7,13 +7,13 @@ import IPaginatedResults from "@ignatisd/cbrm/lib/interfaces/helpers/PaginatedRe
 import Query from "@ignatisd/cbrm/lib/helpers/Query";
 import JsonResponse from "@ignatisd/cbrm/lib/helpers/JsonResponse";
 import Logger from "@ignatisd/cbrm/lib/helpers/Logger";
+import { IMappingResponse } from "@ignatisd/cbrm/lib/interfaces/helpers/Mapping";
 
 export abstract class ParseRepositoryBase<T = any> extends Repository<Parse.ObjectConstructor> implements IRepositoryBase<T> {
 
     public textFields: string[] = [];
     protected autopopulate: IPopulate[] = [];
     protected _blacklist: Record<string, boolean> = {};
-    protected _useMasterKey: boolean = false;
 
     protected constructor(modelName: string) {
         super(Parse.Object.extend(modelName));
@@ -23,7 +23,7 @@ export abstract class ParseRepositoryBase<T = any> extends Repository<Parse.Obje
         return new Parse.Query<Parse.Object<T>>(this.model);
     }
 
-    public build(terms: IQuery, query: Parse.Query<any> = null): Parse.Query<Parse.Object<T>> {
+    public build(terms: IQuery, query: Parse.Query<any> = null): Parse.Query<any> {
         if (terms.raw) {
             return terms.raw;
         }
@@ -79,23 +79,16 @@ export abstract class ParseRepositoryBase<T = any> extends Repository<Parse.Obje
         return query;
     }
 
-    public useMasterKey(state: boolean = true) {
-        // nullish coalescing operator ( checks for null | undefined )
-        state = state ?? !this._useMasterKey;
-        this._useMasterKey = state;
-        return this;
-    }
-
-    protected _scopeOptions(params?: IQuery) {
+    protected _scopeOptions(params?: IQuery, useMasterKey: boolean = false) {
         const opts: Parse.ScopeOptions = {};
-        if (params?.token === "useMasterKey") {
+        if (useMasterKey) {
+            opts.useMasterKey = true;
+        } else if (params?.token === "useMasterKey") {
             opts.useMasterKey = true;
         } else if (params?.token) {
             opts.sessionToken = params.token;
         } else if (this._user?.sessionId) {
             opts.sessionToken = this._user.sessionId;
-        } else if (this._useMasterKey) {
-            opts.useMasterKey = true;
         }
         return opts;
     }
@@ -228,27 +221,34 @@ export abstract class ParseRepositoryBase<T = any> extends Repository<Parse.Obje
     }
 
     async ensureMapping() {
-        return Promise.resolve();
+        return JsonResponse.notImplemented();
     }
 
-    async create(item: Partial<T>) {
-        const response = new JsonResponse();
+    public mapping(modelOnly?: boolean): IMappingResponse {
+        return {
+            model: this.modelName,
+            mapping: null // TODO generate mapping
+        };
+    }
+
+    async create(item: Partial<T>, userMasterKey: boolean = false): Promise<JsonResponse<T>> {
+        const response = new JsonResponse<T>();
         try {
-            const model = new this._model();
+            const model: any = new this._model();
             for (let prop in item) {
                 if (!item.hasOwnProperty(prop) || prop === "objectId") {
                     continue;
                 }
                 model.set(prop, item[prop]);
             }
-            const result = await model.save(null, this._scopeOptions());
+            const result = await model.save(null, this._scopeOptions(null, userMasterKey));
             return response.ok(result);
         } catch (e) {
             Logger.exception(e, this.repoUser);
             return response.exception(e);
         }
     }
-    async createMany(items: Partial<T>[]) {
+    async createMany(items: Partial<T>[], userMasterKey: boolean = false) {
         const response = new JsonResponse();
         try {
             const models = [];
@@ -262,15 +262,15 @@ export abstract class ParseRepositoryBase<T = any> extends Repository<Parse.Obje
                 }
                 models.push(model);
             }
-            const result = await Parse.Object.saveAll(models, this._scopeOptions());
+            const result = await Parse.Object.saveAll(models, this._scopeOptions(null, userMasterKey));
             return response.ok(result);
         } catch (e) {
             Logger.exception(e, this.repoUser);
             return response.exception(e);
         }
     }
-    async insertMany(items: Partial<T>[]) {
-        return this.createMany(items);
+    async insertMany(items: Partial<T>[], userMasterKey: boolean = false) {
+        return this.createMany(items, userMasterKey);
     }
 
     async count(q: IQuery) {
@@ -285,7 +285,7 @@ export abstract class ParseRepositoryBase<T = any> extends Repository<Parse.Obje
     async search(q: IQuery): Promise<IPaginatedResults<T>> {
         return this.retrieve(q);
     }
-    async find(q: IQuery) {
+    async find(q: IQuery): Promise<T[]> {
         const st = this._prepareQuery(q);
         const query = this.build(st, this.query());
         return query.find(this._scopeOptions(st));
@@ -299,7 +299,7 @@ export abstract class ParseRepositoryBase<T = any> extends Repository<Parse.Obje
         return query.first(this._scopeOptions(st));
     }
 
-    async updateOne(id: string, item: Partial<T>) {
+    async updateOne(id: string, item: Partial<T>, userMasterKey: boolean = false) {
         const response = new JsonResponse();
         try {
             const model = await this.query().get(id);
@@ -312,17 +312,17 @@ export abstract class ParseRepositoryBase<T = any> extends Repository<Parse.Obje
                 }
                 model.set(prop, <any>item[prop]);
             }
-            const result = await model.save(null, this._scopeOptions());
+            const result = await model.save(null, this._scopeOptions(null, userMasterKey));
             return response.ok(result);
         } catch (e) {
             Logger.exception(e, this.repoUser);
             return response.exception(e);
         }
     }
-    async updateMany(filters: any, props?: Partial<T>) {
+    async updateMany(filters: any, props?: Partial<T>, userMasterKey: boolean = false) {
         return JsonResponse.notImplemented();
     }
-    async updateOrCreate(filters: any, item?: Partial<T>) {
+    async updateOrCreate(filters: any, item?: Partial<T>, userMasterKey: boolean = false) {
         const response = new JsonResponse();
         try {
             const q = new Query().setFilters(filters);
@@ -336,32 +336,32 @@ export abstract class ParseRepositoryBase<T = any> extends Repository<Parse.Obje
                 }
                 model.set(prop, item[prop]);
             }
-            const result = await model.save(null, this._scopeOptions());
+            const result = await model.save(null, this._scopeOptions(null, userMasterKey));
             return response.ok(result);
         } catch (e) {
             Logger.exception(e, this.repoUser);
             return response.exception(e);
         }
     }
-    async updateOrCreateMany(items: Partial<T>[], props?: any) {
+    async updateOrCreateMany(items: Partial<T>[], props?: any, userMasterKey: boolean = false) {
         return JsonResponse.notImplemented();
     }
 
-    async deleteById(id: string) {
+    async deleteById(id: string, userMasterKey: boolean = false) {
         const response = new JsonResponse();
         try {
             const model = await this.query().get(id);
             if (!model) {
                 return response.error("Not found");
             }
-            const result = await model.destroy(this._scopeOptions());
+            const result = await model.destroy(this._scopeOptions(null, userMasterKey));
             return response.ok(result);
         } catch (e) {
             Logger.exception(e, this.repoUser);
             return response.exception(e);
         }
     }
-    async deleteOne(q: Query) {
+    async deleteOne(q: Query, userMasterKey: boolean = false) {
         const response = new JsonResponse();
         try {
             const st = this._prepareQuery(q);
@@ -370,21 +370,21 @@ export abstract class ParseRepositoryBase<T = any> extends Repository<Parse.Obje
             if (!model) {
                 return response.error("Not found");
             }
-            const result = await model.destroy(this._scopeOptions());
+            const result = await model.destroy(this._scopeOptions(q, userMasterKey));
             return response.ok(result);
         } catch (e) {
             Logger.exception(e, this.repoUser);
             return response.exception(e);
         }
     }
-    async deleteMany(q: Query) {
+    async deleteMany(q: IQuery, userMasterKey: boolean = false) {
         const response = new JsonResponse();
         try {
-            const results = await this.find(q);
+            const results: any[] = await this.find(q);
             if (!results?.length) {
                 return response.error("Not found");
             }
-            const result = await Parse.Object.destroyAll(results, this._scopeOptions());
+            const result = await Parse.Object.destroyAll(results, this._scopeOptions(q, userMasterKey));
             return response.ok(result);
         } catch (e) {
             Logger.exception(e, this.repoUser);
