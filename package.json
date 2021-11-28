@@ -1,0 +1,79 @@
+{
+  "name": "@ignatisd/cbrm-parse-server",
+  "version": "0.0.0-semantic-released",
+  "description": "A CBRM connector package for Parse Server",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ignatisD/cbrm-parse-server.git"
+  },
+  "author": "Ignatios Drakoulas",
+  "license": "MIT",
+  "scripts": {
+    "build": "tsc -b tsconfig.json",
+    "eslint": "eslint -c .eslintrc.js --ext .ts src",
+    "test": "npm run eslint",
+    "sr": "npx semantic-release --dry-run"
+  },
+  "files": [
+    "lib/**/*"
+  ],
+  "main": "lib/index.js",
+  "types": "lib/index.d.ts",
+  "keywords": ["cbrm", "typescript", "nodejs", "parse", "parse-server"],
+  "bugs": {
+    "url": "https://github.com/ignatisD/cbrm-parse-serverr/issues"
+  },
+  "homepage": "https://github.com/ignatisD/cbrm-parse-server#readme",
+  "dependencies": {
+    "@ignatisd/cbrm": "^3.0.0",
+    "express": "^4.17.1",
+    "lodash": "^4.17.21",
+    "parse": "^3.4.0",
+    "parse-dashboard": "^3.2.1",
+    "parse-server": "^4.10.4"
+  },
+  "devDependencies": {
+    "@semantic-release/github": "^8.0.2",
+    "@types/express": "^4.17.13",
+    "@types/parse": "^2.18.13",
+    "@typescript-eslint/eslint-plugin": "^5.3.0",
+    "@typescript-eslint/parser": "^5.3.0",
+    "eslint": "^8.1.0",
+    "eslint-import-resolver-typescript": "^2.5.0",
+    "eslint-plugin-import": "^2.25.2",
+    "eslint-plugin-jsdoc": "^37.0.3",
+    "eslint-plugin-no-null": "^1.0.2",
+    "semantic-release": "^18.0.0",
+    "typescript": "^4.4"
+  },
+  "publishConfig": {
+    "access": "public",
+    "registry": "https://registry.npmjs.org/",
+    "tag": "latest",
+    "branches": [
+      "master"
+    ]
+  },
+  "release": {
+    "branches": [
+      "master"
+    ],
+    "plugins": [
+      "@semantic-release/commit-analyzer",
+      "@semantic-release/release-notes-generator",
+      [
+        "@semantic-release/npm",
+        {
+          "pkgRoot": ".",
+          "tarballDir": "release"
+        }
+      ],
+      [
+        "@semantic-release/github",
+        {
+          "assets": "release/*.tgz"
+        }
+      ]
+    ]
+  }
+}
