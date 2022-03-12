@@ -7,6 +7,7 @@ import JsonResponse from "@ignatisd/cbrm/lib/helpers/JsonResponse";
 import { IMappingResponse } from "@ignatisd/cbrm/lib/interfaces/helpers/Mapping";
 
 export default class ParseBusinessBase<T = any> extends Business<T> implements IBusinessBase<T> {
+
     protected _repo: ParseRepositoryBase;
 
     protected constructor(repo: ParseRepositoryBase) {
@@ -14,28 +15,27 @@ export default class ParseBusinessBase<T = any> extends Business<T> implements I
     }
 
     public async ensureMapping(mode?: any) {
-        return this._repo.ensureMapping();
+        return this._repo.ensureMapping(mode);
     }
 
     public getMapping(modelOnly?: boolean): IMappingResponse {
         return this._repo.mapping(modelOnly);
     }
 
-
     public async create(item: T, userMasterKey: boolean = false) {
-        return await this._repo.create(item, userMasterKey);
+        return this._repo.create(item, userMasterKey);
     }
 
     public async createMany(items: T[], userMasterKey: boolean = false) {
-        return await this._repo.createMany(items, userMasterKey);
+        return this._repo.createMany(items, userMasterKey);
     }
 
     public async updateOrCreate(filters: any, item: Partial<T>, userMasterKey: boolean = false) {
-        return await this._repo.updateOrCreate(filters, item, userMasterKey);
+        return this._repo.updateOrCreate(filters, item, userMasterKey);
     }
 
     public async updateOrCreateMany(items: Partial<T>[], userMasterKey: boolean = false) {
-        return await this._repo.updateOrCreateMany(items, userMasterKey);
+        return this._repo.updateOrCreateMany(items, userMasterKey);
     }
 
     public async search(q: IQuery): Promise<IPaginatedResults<T>> {
@@ -43,7 +43,7 @@ export default class ParseBusinessBase<T = any> extends Business<T> implements I
     }
 
     public async retrieve(q: IQuery): Promise<IPaginatedResults<T>> {
-        return await this._repo.retrieve(q);
+        return this._repo.retrieve(q);
     }
 
     public async find(q: IQuery): Promise<T[]> {
@@ -59,11 +59,11 @@ export default class ParseBusinessBase<T = any> extends Business<T> implements I
     }
 
     public async update(_id: string, item: Partial<T>, userMasterKey: boolean = false) {
-        return await this._repo.updateOne(_id, item, userMasterKey);
+        return this._repo.updateOne(_id, item, userMasterKey);
     }
 
     public async updateMany(terms: IQuery, item: Partial<T>|any, userMasterKey: boolean = false) {
-        return await this._repo.updateMany(terms, item);
+        return this._repo.updateMany(terms, item);
     }
 
     public async updateManyWithDifferentValues(items: Partial<T>[], userMasterKey: boolean = false) {
@@ -71,15 +71,15 @@ export default class ParseBusinessBase<T = any> extends Business<T> implements I
     }
 
     public async delete(_id: string, userMasterKey: boolean = false) {
-        return await this._repo.deleteById(_id, userMasterKey);
+        return this._repo.deleteById(_id, userMasterKey);
     }
 
     public async deleteMany(q: IQuery) {
-        return await this._repo.deleteMany(q);
+        return this._repo.deleteMany(q);
     }
 
     public async count(q: IQuery): Promise<number> {
-        return await this._repo.count(q);
+        return this._repo.count(q);
     }
 
     public async restore(id: string): Promise<JsonResponse> {

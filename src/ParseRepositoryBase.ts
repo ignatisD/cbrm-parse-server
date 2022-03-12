@@ -1,5 +1,5 @@
 import * as Parse from "parse/node";
-import { escapeRegExp } from "lodash";
+import { without, escapeRegExp } from "lodash";
 import Repository from "@ignatisd/cbrm/lib/repository/Repository";
 import IRepositoryBase from "@ignatisd/cbrm/lib/interfaces/repository/RepositoryBase";
 import { IFilter, IPopulate, IQuery } from "@ignatisd/cbrm/lib/interfaces/helpers/Query";
@@ -8,60 +8,102 @@ import Query from "@ignatisd/cbrm/lib/helpers/Query";
 import JsonResponse from "@ignatisd/cbrm/lib/helpers/JsonResponse";
 import Logger from "@ignatisd/cbrm/lib/helpers/Logger";
 import { IMappingResponse } from "@ignatisd/cbrm/lib/interfaces/helpers/Mapping";
+import { NewAble } from "@ignatisd/cbrm/lib/interfaces/helpers/NewAble";
+import Helpers from "@ignatisd/cbrm/lib/helpers/Helpers";
+import Pagination from "@ignatisd/cbrm/lib/helpers/Pagination";
 
-export abstract class ParseRepositoryBase<T = any> extends Repository<Parse.ObjectConstructor> implements IRepositoryBase<T> {
+export abstract class ParseRepositoryBase<T extends Parse.Attributes = any> extends Repository<NewAble<Parse.Object<T>>> implements IRepositoryBase<T> {
 
     public textFields: string[] = [];
     protected autopopulate: IPopulate[] = [];
-    protected _blacklist: Record<string, boolean> = {};
+
+    protected _schema: Record<string, Parse.Schema.TYPE> = {};
+    protected hide: Record<string, boolean> = {};
 
     protected constructor(modelName: string) {
         super(Parse.Object.extend(modelName));
     }
 
     public query() {
-        return new Parse.Query<Parse.Object<T>>(this.model);
+        return new Parse.Query<Parse.Object<T>>(this.modelName);
+    }
+    public schema() {
+        return this._schema;
     }
 
-    public build(terms: IQuery, query: Parse.Query<any> = null): Parse.Query<any> {
+    public fromQuery(terms: IQuery, query: Parse.Query<Parse.Object<T>> = null): Parse.Query<any> {
         if (terms.raw) {
             return terms.raw;
         }
-        const limit = terms.options.limit || 0;
-        const page = terms.options.page || 1;
-        const offset = (page - 1) * limit;
         query = query ?? this.query();
-        query.limit(limit);
-
-        if (!terms.scroll) {
-            query.skip(offset);
+        if (typeof terms.options.limit !== "undefined") {
+            const limit = terms.options.limit || 0;
+            const page = terms.options.page || 1;
+            const offset = (page - 1) * limit;
+            query.limit(limit);
+            if (!terms.scroll && offset) {
+                query.skip(offset);
+            }
         }
-
+        let toSelect: string[] = [];
         if (terms.projection) {
-            const projection = {
-                excludes: [],
-                includes: [],
-            };
-            Object.keys(terms.projection).forEach((p) => {
-                if (!terms.projection[p]) {
-                    projection.excludes.push(p);
-                } else {
-                    projection.includes.push(p);
+            Object.keys(this._schema).forEach(key => {
+                if (!this.hide[key]) {
+                    toSelect.push(key);
                 }
             });
-            if (projection.excludes.length === 0) {
-                delete projection.excludes;
+            const toSelectProjection = [];
+            const toNotSelectProjection = [];
+            Object.keys(terms.projection).forEach((p) => {
+                if (terms.projection[p]) {
+                    if (!this.hide[p]) {
+                        toSelectProjection.push(p);
+                    }
+                } else {
+                    toNotSelectProjection.push(p);
+                }
+            });
+            if (toNotSelectProjection.length) {
+                toSelect = toSelect.filter(s => toNotSelectProjection.indexOf(s) === -1);
+            } else if (toSelectProjection.length) {
+                toSelect = toSelectProjection;
             }
-            if (projection.includes.length === 0) {
-                delete projection.includes;
+        }
+        if (terms.options.populate.length) {
+            for (const pop of terms.options.populate) {
+                let selects = [];
+                if (pop.select && typeof pop.select === "string") {
+                    if (pop.select.includes(",")) {
+                        selects = pop.select.split(",");
+                    } else {
+                        selects = pop.select.split(" ");
+                    }
+                } else if (Array.isArray(pop.select)) {
+                    selects = pop.select;
+                }
+                if (!selects.length) {
+                    query.include(pop.path);
+                    if (toSelect.length) {
+                        toSelect.push(pop.path);
+                    }
+                } else {
+                    selects.map(s => {
+                        query.include(`${pop.path}.${s}`);
+                        if (toSelect.length) {
+                            toSelect.push(`${pop.path}.${s}`);
+                        }
+                    });
+                }
             }
-            query.select(projection.includes);
+        }
+        if (toSelect.length > 0) {
+            query.select(toSelect);
         }
         if (terms.id) {
-            query.equalTo("objectId", terms.id);
+            query.equalTo("objectId", <any>terms.id);
         }
         const filters = terms.opFilters;
-        filters.forEach((filter: IFilter) => {
+        filters.forEach((filter) => {
             this._handleFilter(filter, query);
         });
         if (terms.options.sort) {
@@ -83,7 +125,7 @@ export abstract class ParseRepositoryBase<T = any> extends Repository<Parse.Obje
         const opts: Parse.ScopeOptions = {};
         if (useMasterKey) {
             opts.useMasterKey = true;
-        } else if (params?.token === "useMasterKey") {
+        } else if (params?.useMasterKey) {
             opts.useMasterKey = true;
         } else if (params?.token) {
             opts.sessionToken = params.token;
@@ -104,6 +146,9 @@ export abstract class ParseRepositoryBase<T = any> extends Repository<Parse.Obje
     }
 
     protected _handleFilter(filter: IFilter, query: Parse.Query<any>) {
+        if (filter.key === "_id") {
+            filter.key = "objectId"; // TODO check conflicts
+        }
         let val: any[];
         switch (filter.op) {
             case "$exists":
@@ -154,18 +199,25 @@ export abstract class ParseRepositoryBase<T = any> extends Repository<Parse.Obje
                 const subQueries: Parse.Query<any>[] = [];
                 for (let v of filter.value) {
                     if (v?.opFilters?.length) {
-                        subQueries.push(this.build(v.opFilters));
+                        subQueries.push(this.fromQuery(v));
                     }
                 }
                 if (!subQueries.length) {
                     break;
                 }
-                if (filter.key === "or") {
-                    query = Parse.Query.or(query, ...subQueries);
-                } else if (filter.key === "not") {
-                    query = Parse.Query.nor(query, ...subQueries);
-                } else {
-                    query = Parse.Query.and(query, ...subQueries);
+                try {
+                    if (filter.key === "or") {
+                        // @ts-ignore
+                        query._orQuery(subQueries);
+                    } else if (filter.key === "not") {
+                        // @ts-ignore
+                        query._norQuery(subQueries);
+                    } else {
+                        // @ts-ignore
+                        query ._andQuery(subQueries);
+                    }
+                } catch (e) {
+                    Logger.exception(e);
                 }
                 break;
             case "$nested":
@@ -220,8 +272,74 @@ export abstract class ParseRepositoryBase<T = any> extends Repository<Parse.Obje
         return st;
     }
 
-    async ensureMapping() {
-        return JsonResponse.notImplemented();
+    public paginate(docs: T[], paging: IPaginatedResults<T>) {
+        docs = docs || [];
+        paging = paging || new Pagination<T>();
+        return new Pagination<T>()
+            .setLimit(paging.limit || global.pagingLimit)
+            .setPage(paging.page || 1)
+            .setTotal(paging.total || docs.length)
+            .addResults(docs)
+            .toObject();
+    }
+
+    async ensureMapping(mode?: any) {
+        const json = new JsonResponse();
+        try {
+            const allowedTypes: Parse.Schema.TYPE[] = [
+                "String",
+                "Number",
+                "Boolean",
+                "Date",
+                "Array",
+                "Object",
+                "Pointer",
+                "Relation",
+                "File",
+                "GeoPoint",
+            ];
+            const schema = new Parse.Schema(this.modelName);
+            const schemaState = await schema.get();
+            if (!schemaState) {
+                return json.error(`Schema not found: '${this.modelName}'`);
+            }
+            const excluded = [
+                "objectId",
+                "createdAt",
+                "updatedAt",
+                "ACL",
+            ];
+            const schemaKeys = without(Object.keys(this._schema), ...excluded);
+            const existingSchemaKeys = without(Object.keys(schemaState.fields), ...excluded);
+            const changes = {};
+            for (const key of schemaKeys) {
+                const schemaType = this._schema[key];
+                if (allowedTypes.indexOf(schemaType) === -1) {
+                    Logger.warning(`Unrecognized Parse.Schema type '${schemaType}' for field '${key}'`);
+                    continue;
+                }
+                if (existingSchemaKeys.indexOf(key) === -1) {
+                    schema.addField(key, this._schema[key]);
+                    changes[key] = 1;
+                }
+            }
+            for (const key of existingSchemaKeys) {
+                if (schemaKeys.indexOf(key) === -1) {
+                    schema.deleteField(key);
+                    changes[key] = -1;
+                }
+            }
+            if (Object.keys(changes).length) {
+                if (mode?.force) {
+                    await schema.update();
+                }
+                return json.ok(changes, "Changes detected");
+            }
+            return json.ok(changes, "No changes detected");
+        } catch (e) {
+            Logger.exception(e, this.repoUser, "updateSchema");
+            return json.exception(e);
+        }
     }
 
     public mapping(modelOnly?: boolean): IMappingResponse {
@@ -229,6 +347,12 @@ export abstract class ParseRepositoryBase<T = any> extends Repository<Parse.Obje
             model: this.modelName,
             mapping: null // TODO generate mapping
         };
+    }
+
+    async populate(docs: T, st: IQuery): Promise<T>;
+    async populate(docs: T[], st: IQuery): Promise<T[]>;
+    async populate(docs: T[]|T, st: IQuery) {
+        return Helpers.populate(docs, st);
     }
 
     async create(item: Partial<T>, userMasterKey: boolean = false): Promise<JsonResponse<T>> {
@@ -253,7 +377,7 @@ export abstract class ParseRepositoryBase<T = any> extends Repository<Parse.Obje
         try {
             const models = [];
             for (let item of items) {
-                const model = new this._model();
+                const model: any = new this._model();
                 for (let prop in item) {
                     if (!item.hasOwnProperty(prop) || prop === "objectId") {
                         continue;
@@ -274,29 +398,58 @@ export abstract class ParseRepositoryBase<T = any> extends Repository<Parse.Obje
     }
 
     async count(q: IQuery) {
-        const st = this._prepareQuery(q);
-        const query = this.build(st, this.query());
-        return query.count(this._scopeOptions(st));
+        const st = Query.clone(q);
+        st.populate([]);
+        st.setPaging(1, -1);
+        const query = this.fromQuery(q, this.query());
+        return query.count(this._scopeOptions(q));
     }
     async retrieve(q: IQuery): Promise<IPaginatedResults<T>> {
+        let count: number = 0;
         const docs = await this.find(q);
-        return this.emptyPaginatedResults(docs);
+        if (docs?.length >= q?.options?.limit) {
+            count = await this.count(q);
+        }
+        /** @ts-ignore */
+        return this.paginate(docs, Pagination.fromQuery(q, count));
     }
     async search(q: IQuery): Promise<IPaginatedResults<T>> {
         return this.retrieve(q);
     }
     async find(q: IQuery): Promise<T[]> {
         const st = this._prepareQuery(q);
-        const query = this.build(st, this.query());
-        return query.find(this._scopeOptions(st));
+        if (st.options.lean) {
+            st.options.populate = [];
+        }
+        const query = this.fromQuery(st, this.query());
+        let results = (await query.find(this._scopeOptions(st))) || [];
+        if (st.options.lean && q?.options?.populate?.length && results.length) {
+            results = results.map(r => r.toJSON());
+            const popQ = Query.mimic(q);
+            popQ.setLean(true);
+            popQ.populate(q.options.populate);
+            results = await this.populate(results, popQ);
+        }
+        return results;
     }
     async findById(params: IQuery) {
         return this.findOne(params);
     }
     async findOne(q: IQuery) {
         const st = this._prepareQuery(q);
-        const query = this.build(st, this.query());
-        return query.first(this._scopeOptions(st));
+        if (st.options.lean) {
+            st.options.populate = [];
+        }
+        const query = this.fromQuery(st, this.query());
+        let doc = await query.first(this._scopeOptions(st));
+        if (doc && st.options.lean && q?.options?.populate?.length) {
+            doc = doc.toJSON();
+            const popQ = Query.mimic(q);
+            popQ.setLean(true);
+            popQ.populate(q.options.populate);
+            doc = await this.populate(doc, popQ);
+        }
+        return doc;
     }
 
     async updateOne(id: string, item: Partial<T>, userMasterKey: boolean = false) {
@@ -365,7 +518,7 @@ export abstract class ParseRepositoryBase<T = any> extends Repository<Parse.Obje
         const response = new JsonResponse();
         try {
             const st = this._prepareQuery(q);
-            const query = this.build(st, this.query());
+            const query = this.fromQuery(st, this.query());
             const model = await query.first(this._scopeOptions(st));
             if (!model) {
                 return response.error("Not found");
