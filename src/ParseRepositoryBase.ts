@@ -352,7 +352,7 @@ export abstract class ParseRepositoryBase<T extends Parse.Attributes = any> exte
     async populate(docs: T, st: IQuery): Promise<T>;
     async populate(docs: T[], st: IQuery): Promise<T[]>;
     async populate(docs: T[]|T, st: IQuery) {
-        return Helpers.populate(docs, st);
+        return super.populate(docs, st);
     }
 
     async create(item: Partial<T>, userMasterKey: boolean = false): Promise<JsonResponse<T>> {
