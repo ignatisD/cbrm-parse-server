@@ -3,7 +3,7 @@ import * as Parse from "parse/node";
 import { ParseServer } from "parse-server";
 import * as ParseDashboard from "parse-dashboard";
 import { IParseConnectionOptions } from "./ParseConnectionOptions";
-import { IConnector } from "@ignatisd/cbrm/lib/interfaces/helpers/Connector";
+import { IConnector } from "@ignatisd/cbrm";
 
 export class ParseServerConnector implements IConnector {
 
@@ -28,9 +28,7 @@ export class ParseServerConnector implements IConnector {
     protected _api: any;
     protected _dashboard: any;
 
-    constructor() {
-
-    }
+    constructor() {}
 
     public init(opts: { uri: string; options: IParseConnectionOptions }) {
         this._uri = opts.uri;

@@ -1,12 +1,7 @@
-import Business from "@ignatisd/cbrm/lib/business/Business";
-import IBusinessBase from "@ignatisd/cbrm/lib/interfaces/business/BusinessBase";
+import { Business, IBusinessBase, IMappingResponse, IPaginatedResults, JsonResponse, IQuery } from "@ignatisd/cbrm";
 import { ParseRepositoryBase } from "./ParseRepositoryBase";
-import { IQuery } from "@ignatisd/cbrm/lib/interfaces/helpers/Query";
-import IPaginatedResults from "@ignatisd/cbrm/lib/interfaces/helpers/PaginatedResults";
-import JsonResponse from "@ignatisd/cbrm/lib/helpers/JsonResponse";
-import { IMappingResponse } from "@ignatisd/cbrm/lib/interfaces/helpers/Mapping";
 
-export default class ParseBusinessBase<T = any> extends Business<T> implements IBusinessBase<T> {
+export class ParseBusinessBase<T = any> extends Business<T> implements IBusinessBase<T> {
 
     protected _repo: ParseRepositoryBase;
 
