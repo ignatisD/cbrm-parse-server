@@ -1,18 +1,18 @@
 import * as Parse from "parse/node";
 import { without, escapeRegExp } from "lodash";
-import Repository from "@ignatisd/cbrm/lib/repository/Repository";
-import IRepositoryBase from "@ignatisd/cbrm/lib/interfaces/repository/RepositoryBase";
-import { IFilter, IPopulate, IQuery } from "@ignatisd/cbrm/lib/interfaces/helpers/Query";
-import IPaginatedResults from "@ignatisd/cbrm/lib/interfaces/helpers/PaginatedResults";
-import Query from "@ignatisd/cbrm/lib/helpers/Query";
-import JsonResponse from "@ignatisd/cbrm/lib/helpers/JsonResponse";
-import Logger from "@ignatisd/cbrm/lib/helpers/Logger";
-import { IMappingResponse } from "@ignatisd/cbrm/lib/interfaces/helpers/Mapping";
-import { NewAble } from "@ignatisd/cbrm/lib/interfaces/helpers/NewAble";
-import Helpers from "@ignatisd/cbrm/lib/helpers/Helpers";
-import Pagination from "@ignatisd/cbrm/lib/helpers/Pagination";
+import {
+    Configuration,
+    IFilter,
+    IMappingResponse,
+    IPaginatedResults,
+    IPopulate,
+    IQuery,
+    IRepositoryBase, JsonResponse, Logger,
+    NewAble, Pagination, Query,
+    Repository
+} from "@ignatisd/cbrm";
 
-export abstract class ParseRepositoryBase<T extends Parse.Attributes = any> extends Repository<NewAble<Parse.Object<T>>> implements IRepositoryBase<T> {
+export class ParseRepositoryBase<T extends Parse.Attributes = any> extends Repository<NewAble<Parse.Object<T>>> implements IRepositoryBase<T> {
 
     public textFields: string[] = [];
     protected autopopulate: IPopulate[] = [];
@@ -20,7 +20,7 @@ export abstract class ParseRepositoryBase<T extends Parse.Attributes = any> exte
     protected _schema: Record<string, Parse.Schema.TYPE> = {};
     protected hide: Record<string, boolean> = {};
 
-    protected constructor(modelName: string) {
+    constructor(modelName: string) {
         super(Parse.Object.extend(modelName));
     }
 
@@ -276,7 +276,7 @@ export abstract class ParseRepositoryBase<T extends Parse.Attributes = any> exte
         docs = docs || [];
         paging = paging || new Pagination<T>();
         return new Pagination<T>()
-            .setLimit(paging.limit || global.pagingLimit)
+            .setLimit(paging.limit || Configuration.get("pagingLimit"))
             .setPage(paging.page || 1)
             .setTotal(paging.total || docs.length)
             .addResults(docs)
@@ -310,6 +310,9 @@ export abstract class ParseRepositoryBase<T extends Parse.Attributes = any> exte
                 "ACL",
             ];
             const schemaKeys = without(Object.keys(this._schema), ...excluded);
+            if (!Object.keys(schemaKeys).length) {
+                return json.error("You need to fill the schema first");
+            }
             const existingSchemaKeys = without(Object.keys(schemaState.fields), ...excluded);
             const changes = {};
             for (const key of schemaKeys) {
